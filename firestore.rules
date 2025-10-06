@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isRecentWrite() { return request.time < timestamp.date(2100,1,1); } // always true; left as example
+
+    match /boards/{boardId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn();
+
+      match /notes/{noteId} {
+        allow read: if true;
+        allow create: if isSignedIn() && request.resource.data.text is string
+                                   && request.resource.data.size <= 0.5
+                                   && request.resource.data.color is string
+                                   && request.resource.data.pose.position.size() == 3
+                                   && request.resource.data.pose.quaternion.size() == 4;
+        allow update: if isSignedIn()
+                      && request.resource.data.diff(resource.data).changedKeys().hasOnly(["text","votes","color","pose","size","fromAI"]);
+        allow delete: if isSignedIn();
+      }
+
+      match /edges/{edgeId} {
+        allow read: if true;
+        allow create: if isSignedIn()
+                      && request.resource.data.from is string
+                      && request.resource.data.to is string
+                      && request.resource.data.from != request.resource.data.to;
+        allow delete, update: if isSignedIn();
+      }
+
+      match /transcripts/{chunkId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.text is string;
+        allow update, delete: if false; // append-only
+      }
+
+      match /ai_outputs/{outId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+        allow update, delete: if isSignedIn();
+      }
+
+      match /presence/{uid} {
+        allow read: if true;
+        allow write: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+  }
+}
